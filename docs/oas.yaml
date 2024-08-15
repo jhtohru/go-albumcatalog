@@ -1,0 +1,357 @@
+openapi: 3.0.3
+info:
+  title: Album Catalog
+  description: |-
+    **Album Catalog** is a RESTful API server that CRUDs music albums.
+
+    [albumcatalog repository](github.com/jhtohru/go-albumcatalog) 
+
+  contact:
+    name: jtohru
+    url: https://github.com/jhtohru
+  version: 0.0.1
+servers:
+  - url: https://127.0.0.1:8080/api
+paths:
+  /albums:
+    post:
+      tags:
+        - album
+      summary: Add a new album to the catalog
+      description: Add a new album to the catalog
+      requestBody:
+        description: Create a new pet in the store
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlbumRequest'
+        required: true
+      responses:
+        '201':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Album'
+
+        '400':
+          description: malformed or invalid request body
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/InvalidRequestBody'
+                  - $ref: '#/components/schemas/MalformedRequestBody'
+        '500':
+          description: internal error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+    get:
+      tags:
+        - album
+      summary: Paginate albums
+      description: Display pages of albums
+      parameters:
+        - name: page_size
+          in: query
+          description: The maximum quantity of albums a page can have
+          required: true
+          explode: true
+          schema:
+            type: string
+            format: integer
+            example: 10
+        - name: page_number
+          in: query
+          description: The number of the requested albums page
+          required: true
+          explode: true
+          schema:
+            type: string
+            format: integer
+            example: 3
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Album'          
+        '400':
+          description: missing, malformed, or invalid query parameters
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/MissingPageSize'
+                  - $ref: '#/components/schemas/MalformedPageSize'
+                  - $ref: '#/components/schemas/MissingPageNumber'
+                  - $ref: '#/components/schemas/MalformedPageNumber'
+                  - $ref: '#/components/schemas/TooSmallPageSize'
+                  - $ref: '#/components/schemas/TooBigPageSize'
+                  - $ref: '#/components/schemas/TooSmallPageNumber'
+        '500':
+          description: internal error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+
+  /albums/{album_id}:
+    get:
+      tags:
+        - album
+      summary: Find album by ID
+      description: Returns a single album
+      parameters:
+        - name: album_id
+          in: path
+          description: ID of album to return
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: 00000000-0000-0000-0000-000000000000
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Album'
+        '400':
+          description: Malformed album id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MalformedAlbumID'
+        '404':
+          description: Album not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlbumNotFound'
+        '500':
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+    put:
+      tags:
+        - album
+      summary: Update an existing album
+      description: Update an existing album by ID
+      parameters:
+        - name: album_id
+          in: path
+          description: ID of album to return
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: 00000000-0000-0000-0000-000000000000
+      requestBody:
+        description: Update an existent album in the catalog
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlbumRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Album'          
+        '400':
+          description: Malformed album id, malformed or invalid request body
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/MalformedAlbumID'
+                  - $ref: '#/components/schemas/MalformedRequestBody'
+                  - $ref: '#/components/schemas/InvalidRequestBody'
+        '404':
+          description: Album not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlbumNotFound'
+        '500':
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+
+    delete:
+      tags:
+        - album
+      summary: Deletes an album
+      description: Delete an album
+      parameters:
+        - name: album_id
+          in: path
+          description: ID of album to return
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: 00000000-0000-0000-0000-000000000000
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Album'
+        '400':
+          description: Malformed album id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MalformedAlbumID'
+        '404':
+          description: Album not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlbumNotFound'
+        '500':
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+
+components:
+  schemas:
+    AlbumRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          example: Babylon By Gus Vol.1 - O Ano do Macaco
+        artist:
+          type: string
+          example: Black Alien
+        price:
+          type: integer
+          format: int64
+          example: 12345
+    Album:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 00000000-0000-0000-0000-000000000000
+        title:
+          type: string
+          example: Babylon By Gus Vol.1 - O Ano do Macaco
+        artist:
+          type: string
+          example: Black Alien
+        price:
+          type: integer
+          format: int64
+          example: 12345
+        created_at:
+          type: string
+          format: datetime
+          example: 2025-06-06T06:35:46.303789973-03:00
+        updated_at:
+          type: string
+          format: datetime
+          example: 2025-06-06T06:35:46.303789973-03:00
+    MalformedRequestBody:
+      type: object
+      properties:
+        message:
+          type: string
+          example: malformed request body
+    InvalidRequestBody:
+      type: object
+      properties:
+        message:
+          type: string
+          example: invalid request body
+        problems:
+          type: object
+          properties:
+            title:
+              type: string
+              example: "is empty"
+            artist:
+              type: string
+              example: "is empty"
+            price:
+              type: string
+              example: "is not greater than zero"
+    MissingPageSize:
+      type: object
+      properties:
+        message:
+          type: string
+          example: query parameter page_size is missing
+    MalformedPageSize:
+      type: object
+      properties:
+        message:
+          type: string
+          example: page size is not a valid number
+    MissingPageNumber:
+      type: object
+      properties:
+        message:
+          type: string
+          example: query parameter page_number is missing
+    MalformedPageNumber:
+      type: object
+      properties:
+        message:
+          type: string
+          example: page number is not a valid number
+    TooSmallPageSize:
+      type: object
+      properties:
+        message:
+          type: string
+          example: page number is less than 1
+    TooBigPageSize:
+      type: object
+      properties:
+        message:
+          type: string
+          example: page number is greater than 50
+    TooSmallPageNumber:
+      type: object
+      properties:
+        message:
+          type: string
+          example: page number is less than 1
+    MalformedAlbumID:
+      type: object
+      properties:
+        message:
+          type: string
+          example: malformed album id
+    AlbumNotFound:
+      type: object
+      properties:
+        message:
+          type: string
+          example: album not found
+    InternalError:
+      type: object
+      properties:
+        message:
+          type: string
+          example: internal error

@@ -1,0 +1,19 @@
+version: '3.6'
+
+services:
+  postgres:
+    image: postgres:16.3
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - type: tmpfs
+        target: /var/lib/postgresql/data/
+    command:
+      - "postgres"
+      - "-c" # turn off fsync for speed
+      - "fsync=off"
+      - "-c" # log everything for debugging
+      - "log_statement=all"

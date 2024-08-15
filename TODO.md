@@ -1,0 +1,4 @@
+- Reverter internal/testutil
+- Verificar se tem algum jeito melhor de listar diferentes modelos de resposta com um mesmo status code no [dev/oas.yaml](dev/oas.yaml).
+- Padronizar textos do [dev/oas.yaml](dev/oas.yaml).
+- Revisar (Grammarly) textos do [README.md](README.md), [dev/oas.yaml](dev/oas.yaml), comentários, testes, mensagens de erro e mensagens de log.
