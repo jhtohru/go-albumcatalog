@@ -1,4 +1,4 @@
-package albumcatalog
+package catalog
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,6 +16,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/jhtohru/go-album-catalog/internal/random"
 )
 
 func TestRequest(t *testing.T) {
@@ -78,7 +81,7 @@ func TestCreateAlbumHandler(t *testing.T) {
 		},
 		"happy path": func() testCase {
 			newID := uuid.New()
-			now := randomTime()
+			now := random.Time()
 			return testCase{
 				requestBody: `
 					{
@@ -458,7 +461,7 @@ func TestUpdateAlbumHandler(t *testing.T) {
 			},
 		},
 		"happy path": func() testCase {
-			now := randomTime()
+			now := random.Time()
 			alb := randomAlbum()
 			return testCase{
 				albumID: "00000000-0000-0000-0000-000000000000",
@@ -653,4 +656,25 @@ func (spy *storageSpy) Update(ctx context.Context, alb Album) error {
 
 func (spy *storageSpy) Remove(ctx context.Context, id uuid.UUID) error {
 	return spy.remove(ctx, id)
+}
+
+// randomAlbum returns a randomly generated Album.
+func randomAlbum() Album {
+	return Album{
+		ID:        uuid.New(),
+		Title:     random.String(20 + rand.IntN(20)),
+		Artist:    random.String(20 + rand.IntN(20)),
+		Price:     rand.IntN(100000),
+		CreatedAt: random.Time(),
+		UpdatedAt: random.Time(),
+	}
+}
+
+// randomAlbums returns a slice containing n randomly generated Albums.
+func randomAlbums(n int) []Album {
+	albs := make([]Album, n)
+	for i := range albs {
+		albs[i] = randomAlbum()
+	}
+	return albs
 }

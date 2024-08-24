@@ -14,12 +14,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pressly/goose/v3"
 
-	"github.com/jhtohru/go-albumcatalog"
+	catalog "github.com/jhtohru/go-album-catalog"
+	"github.com/jhtohru/go-album-catalog/internal/runutil"
 )
 
 func main() {
-	fmt.Println(os.Getenv("DSN"))
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -27,36 +28,38 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	svrHost := os.Getenv("SERVER_HOST")
-	svrPort := os.Getenv("SERVER_PORT")
-	if svrPort == "" {
-		svrPort = "8080"
-	}
-	dsn := os.Getenv("DSN")
+	var (
+		host          = os.Getenv("SERVER_HOST")
+		port          = runutil.GetenvDefault("SERVER_PORT", "8080")
+		dsn           = runutil.MustGetenv("DSN")
+		willMigrateDB = runutil.GetenvBool("MIGRATE_DB")
+	)
 	if dsn == "" {
-		return fmt.Errorf("DSN env var not set")
+		return fmt.Errorf("postgres dsn is not set")
 	}
-
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
-
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return fmt.Errorf("connecting to database: %w", err)
 	}
-
-	albumStorage := albumcatalog.NewPostgresAlbumStorage(db)
+	if willMigrateDB {
+		if err := goose.Up(db, "migrations"); err != nil {
+			return fmt.Errorf("migrating database: %w", err)
+		}
+	}
+	albumStorage := catalog.NewPostgresAlbumStorage(db)
 	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{AddSource: true})
 	logger := slog.New(logHandler)
-	srv := albumcatalog.NewServer(
+	srv := catalog.NewServer(
 		albumStorage,
 		logger,
-		albumcatalog.Validate,
+		catalog.Validate,
 		uuid.New,
 		time.Now,
 	)
 	httpServer := &http.Server{
-		Addr:    net.JoinHostPort(svrHost, svrPort),
+		Addr:    net.JoinHostPort(host, port),
 		Handler: srv,
 	}
 	go func() {
@@ -65,7 +68,6 @@ func run(ctx context.Context) error {
 			log.Printf("Error listening and serving: %v\n", err)
 		}
 	}()
-
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {

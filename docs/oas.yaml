@@ -4,7 +4,7 @@ info:
   description: |-
     **Album Catalog** is a RESTful API server that CRUDs music albums.
 
-    [albumcatalog repository](github.com/jhtohru/go-albumcatalog) 
+    [Source code repository](github.com/jhtohru/go-album-catalog) 
 
   contact:
     name: jtohru

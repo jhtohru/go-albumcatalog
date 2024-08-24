@@ -1,6 +1,6 @@
-# albumcatalog
+# go-album-catalog
 
-**albumcatalog** is a RESTful API server that CRUDs music albums.
+**go-album-catalog** is a RESTful API server that CRUDs music albums.
 
 The application HTTP endpoints are described at the [docs/oas.yaml](docs/oas.yaml) Open API Specification file.
 
@@ -8,56 +8,56 @@ This is a personal project aimed to practice and study the development of HTTP s
 
 ## Running the application
 
-### Starting a Postgres instance
-
-Since the application uses Postgres as its data storage, it expects a running Postgres instance to start.
-
-You can spin up a Docker container running a Postgres instance with the following command:
+Since the application stores data in a Postgres database, it requires the `DSN` environment variable to be set with a running Postgres instance DSN and it will panic if not set.
 
 ```console
-go-albumcatalog$ docker-compose -f ./dev/docker-compose.yaml up -d
+$ DSN=<POSTGRES_DSN> go run ./cmd/catalog/main.go
 ```
 
-### Setting the required environment variables
+### Environment variables
 
-Once a Postgres instance is running, you may set the required environment variables to your current shell so you will not need to set them when running integration tests or starting the application.
-Run the following commands to set the required enviroment variables with the values defined in the [dev/docker-compose.yaml](dev/docker-compose.yaml) file.
+The server hostname can be defined setting the `SERVER_HOST` environment variable.
+The server port can be defined setting the `SERVER_PORT` environment variable, and defaults to **8080** if not set.
+If the `MIGRATE_DB` environment variable is set as `"true"`, the database is migrated before the application starts.
+
+## Testing the source code
+
+The application source code is covered by both unit and integration tests.
+When the integration tests run, a container running a Postgres instance is started automatically.
+
+### Environment variables
+
+To run the integration tests with a custom Postgres instance, set the `POSTGRES_ADDR` environment variable with the Postgres instance address.
+The following environment variables can be used to allow the integration tests to connect to the custom Postgres instance:
+| Env var name | Default value |
+| - | - |
+| `POSTGRES_USER` | `"postgres"` |
+| `POSTGRES_PASSWORD` | `"password"` |
+| `POSTGRES_DEFAULT_DB` | `"postgres"` |
+
+## Migrating the database
+
+[Goose](https://github.com/pressly/goose) is used to migrate the database. Run the following command to migrate the Postgres main database, which will be used by the application. Replace `<DSN>` with the DSN of the Postgres database to be migrated.
 
 ```console
-go-albumcatalog$ export POSTGRES_ADDR=127.0.0.1:5432
-go-albumcatalog$ export DSN=postgresql://postgres@${POSTGRES_ADDR}/postgres?sslmode=disable
+$ goose -dir ./migrations/ postgres <DSN> up
 ```
 
-### Testing the source code
-To run the tests, both unit and database integration tests, run the following command:
+## Local development
 
+Having local Postgres instance can help the development because it enables starting the application locally and also makes the integration tests more responsive.
+
+Starting a local Postgres instance:
 ```console
-go-albumcatalog$ go test ./...
-```
-If the `POSTGRES_ADDR` environment variable is not set, the integration tests will fail.
-
-### Migrating the database
-
-[Goose](https://github.com/pressly/goose) is used to migrate the database. Run the following command to migrate the Postgres main database, which will be used by the application. If `$DSN` is not set, replace it with the DSN of the Postgres database to which the application will connect.
-
-```console
-go-albumcatalog$ goose -dir ./migrations/ postgres ${DSN} up
+$ docker-compose -f dev/docker-compose.yaml up -d
 ```
 
-### Starting the application
-To start the application, run the following command:
-
+Starting the application connected to the local Postgres instance:
 ```console
-go-albumcatalog$ go run ./cmd/albumcatalog/main.go
+$ DSN='postgresql://127.0.0.1:5432/postgres?user=postgres&password=password&sslmode=disable' MIGRATE_DB='true' go run cmd/catalog/main.go
 ```
 
-If the `DSN` environment variable is not set, the application will not start and exit with a non-zero value.
-
-If no errors occur, the application will listen to 127.0.0.1:8080. To customize the server hostname and port, set the `SERVER_HOST` and `SERVER_PORT` environment variables.
-
-### Compiling the application
-To compile the application, run the following command:
-
+Running the integration tests connected to the local Postgres instance:
 ```console
-go-albumcatalog$ go build -o albumcatalog ./cmd/albumcatalog/
+$ POSTGRES_ADDR='127.0.0.1:5432' go test ./...
 ```

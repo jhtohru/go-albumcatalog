@@ -1,4 +1,4 @@
-package albumcatalog
+package catalog
 
 import (
 	"context"

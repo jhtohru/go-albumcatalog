@@ -1,30 +1,68 @@
-package albumcatalog
+package catalog_test
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"math/rand/v2"
 	"os"
-	"path"
-	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
-	"github.com/pressly/goose"
 	"github.com/stretchr/testify/assert"
+
+	catalog "github.com/jhtohru/go-album-catalog"
+	"github.com/jhtohru/go-album-catalog/internal/postgrestest"
+	"github.com/jhtohru/go-album-catalog/internal/random"
+	"github.com/jhtohru/go-album-catalog/internal/runutil"
 )
+
+func TestMain(m *testing.M) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	exitStatus, err := run(ctx, m)
+	cancel()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	os.Exit(exitStatus)
+}
+
+var postgresTest *postgrestest.Postgres
+
+func run(ctx context.Context, m *testing.M) (int, error) {
+	var (
+		postgresAddr      = os.Getenv("POSTGRES_ADDR")
+		postgresUser      = runutil.GetenvDefault("POSTGRES_USER", "postgres")
+		postgresPassword  = runutil.GetenvDefault("POSTGRES_PASSWORD", "password")
+		postgresDefaultDB = runutil.GetenvDefault("POSTGRES_DEFAULT_DB", "postgres")
+	)
+	if postgresAddr == "" {
+		addr, terminate, err := postgrestest.SpinUpContainer(ctx, postgresUser, postgresPassword, postgresDefaultDB)
+		if err != nil {
+			return 1, fmt.Errorf("spinning up postgres container: %w", err)
+		}
+		defer terminate(ctx)
+		postgresAddr = addr
+	}
+	var err error
+	postgresTest, err = postgrestest.New(ctx, postgresAddr, postgresUser, postgresPassword, postgresDefaultDB)
+	if err != nil {
+		return 1, fmt.Errorf("starting postgres test: %w", err)
+	}
+	defer postgresTest.Terminate()
+	return m.Run(), nil
+}
 
 func TestPostgresAlbumStorage_Insert(t *testing.T) {
 	t.Parallel()
 
-	db, drop := newTmpDB(t)
-	defer drop()
+	db := postgresTest.CreateDBOrFailNow(t)
 	defer db.Close()
-	storage := NewPostgresAlbumStorage(db)
+	storage := catalog.NewPostgresAlbumStorage(db)
 	alb := randomAlbum()
 
 	err := storage.Insert(context.Background(), alb)
@@ -36,16 +74,15 @@ func TestPostgresAlbumStorage_Insert(t *testing.T) {
 func TestPostgresAlbumStorage_FindAll(t *testing.T) {
 	t.Parallel()
 
-	db, drop := newTmpDB(t)
-	defer drop()
+	db := postgresTest.CreateDBOrFailNow(t)
 	defer db.Close()
-	storage := NewPostgresAlbumStorage(db)
+	storage := catalog.NewPostgresAlbumStorage(db)
 
 	t.Run("no results from empty database", func(t *testing.T) {
 		albs, err := storage.FindAll(context.Background(), 0, 100)
 
 		assert.Empty(t, albs)
-		assert.ErrorIs(t, err, ErrAlbumNotFound)
+		assert.ErrorIs(t, err, catalog.ErrAlbumNotFound)
 	})
 
 	fixture := randomAlbums(5)
@@ -76,24 +113,22 @@ func TestPostgresAlbumStorage_FindAll(t *testing.T) {
 		albs, err := storage.FindAll(context.Background(), offset, limit)
 
 		assert.Empty(t, albs)
-		assert.ErrorIs(t, err, ErrAlbumNotFound)
+		assert.ErrorIs(t, err, catalog.ErrAlbumNotFound)
 	})
 }
 
 func TestPostgresAlbumStorage_FindOne(t *testing.T) {
 	t.Parallel()
 
-	db, drop := newTmpDB(t)
-	defer drop()
+	db := postgresTest.CreateDBOrFailNow(t)
 	defer db.Close()
-
-	storage := NewPostgresAlbumStorage(db)
+	storage := catalog.NewPostgresAlbumStorage(db)
 
 	t.Run("album not found", func(t *testing.T) {
 		alb, err := storage.FindOne(context.Background(), uuid.New())
 
 		assert.Empty(t, alb)
-		assert.ErrorIs(t, err, ErrAlbumNotFound)
+		assert.ErrorIs(t, err, catalog.ErrAlbumNotFound)
 	})
 
 	t.Run("happy path", func(t *testing.T) {
@@ -110,15 +145,14 @@ func TestPostgresAlbumStorage_FindOne(t *testing.T) {
 func TestPostgresAlbumStorage_Update(t *testing.T) {
 	t.Parallel()
 
-	db, drop := newTmpDB(t)
-	defer drop()
+	db := postgresTest.CreateDBOrFailNow(t)
 	defer db.Close()
-	storage := NewPostgresAlbumStorage(db)
+	storage := catalog.NewPostgresAlbumStorage(db)
 
 	t.Run("album not found", func(t *testing.T) {
 		err := storage.Update(context.Background(), randomAlbum())
 
-		assert.ErrorIs(t, err, ErrAlbumNotFound)
+		assert.ErrorIs(t, err, catalog.ErrAlbumNotFound)
 	})
 
 	t.Run("happy path", func(t *testing.T) {
@@ -137,15 +171,14 @@ func TestPostgresAlbumStorage_Update(t *testing.T) {
 func TestPostgresAlbumStorage_Remove(t *testing.T) {
 	t.Parallel()
 
-	db, drop := newTmpDB(t)
-	defer drop()
+	db := postgresTest.CreateDBOrFailNow(t)
 	defer db.Close()
-	storage := NewPostgresAlbumStorage(db)
+	storage := catalog.NewPostgresAlbumStorage(db)
 
 	t.Run("album not found", func(t *testing.T) {
 		err := storage.Remove(context.Background(), uuid.New())
 
-		assert.ErrorIs(t, err, ErrAlbumNotFound)
+		assert.ErrorIs(t, err, catalog.ErrAlbumNotFound)
 	})
 
 	t.Run("happy path", func(t *testing.T) {
@@ -159,86 +192,33 @@ func TestPostgresAlbumStorage_Remove(t *testing.T) {
 	})
 }
 
-func newTmpDB(t *testing.T) (db *sql.DB, drop func() error) {
-	t.Helper()
-
-	psqlAddr := postgresAddress(t)
-	dbName := "tmpdb_" + strings.ToLower(randomString(30))
-	if err := createDB(psqlAddr, dbName); err != nil {
-		t.Fatalf("Failed to create the database: %v", err)
+// randomAlbum returns a randomly generated Album.
+func randomAlbum() catalog.Album {
+	return catalog.Album{
+		ID:        uuid.New(),
+		Title:     random.String(20 + rand.IntN(20)),
+		Artist:    random.String(20 + rand.IntN(20)),
+		Price:     rand.IntN(100000),
+		CreatedAt: random.Time(),
+		UpdatedAt: random.Time(),
 	}
-	db, err := openDB(psqlAddr, dbName)
-	if err != nil {
-		t.Fatalf("Failed to connect to the database: %v", err)
-	}
-	if err := migrateDB(db); err != nil {
-		t.Fatalf("Failed to migrate the database: %v", err)
-	}
-	drop = func() error {
-		return dropDB(psqlAddr, dbName)
-	}
-	return db, drop
 }
 
-func postgresAddress(t *testing.T) string {
-	t.Helper()
-
-	addr := os.Getenv("POSTGRES_ADDR")
-	if addr == "" {
-		t.Fatalf("POSTGRES_ADDR env var is not set")
+// randomAlbums returns a slice containing n randomly generated Albums.
+func randomAlbums(n int) []catalog.Album {
+	albs := make([]catalog.Album, n)
+	for i := range albs {
+		albs[i] = randomAlbum()
 	}
-	return addr
+	return albs
 }
 
-func openDB(dbmsAddr, dbName string) (*sql.DB, error) {
-	dsn := fmt.Sprintf("postgresql://postgres@%s/%s?sslmode=disable", dbmsAddr, dbName)
-
-	return sql.Open("postgres", dsn)
-}
-
-func createDB(dbmsADdr, dbName string) error {
-	db, err := openDB(dbmsADdr, "postgres")
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-	query := fmt.Sprintf("CREATE DATABASE %s", dbName)
-	_, err = db.Exec(query)
-
-	return err
-}
-
-func dropDB(dbmsAddr, dbName string) error {
-	db, err := openDB(dbmsAddr, "postgres")
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-	query := fmt.Sprintf("DROP DATABASE %s WITH (FORCE)", dbName)
-	_, err = db.Exec(query)
-
-	return err
-}
-
-func migrateDB(db *sql.DB) error {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		return fmt.Errorf("could not get file path")
-	}
-	migrationsDir := path.Join(filepath.Dir(file), "migrations/")
-	if err := goose.Up(db, migrationsDir); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func findAlbum(t *testing.T, db *sql.DB, albID uuid.UUID) Album {
+func findAlbum(t *testing.T, db *sql.DB, albID uuid.UUID) catalog.Album {
 	t.Helper()
 
 	query := "SELECT id, title, artist, price, created_at, updated_at FROM album WHERE id = $1"
 	row := db.QueryRow(query, albID)
-	var alb Album
+	var alb catalog.Album
 	err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price, &alb.CreatedAt, &alb.UpdatedAt)
 	if err != nil {
 		t.Fatalf("Could not find album: %v", err)
@@ -249,7 +229,7 @@ func findAlbum(t *testing.T, db *sql.DB, albID uuid.UUID) Album {
 	return alb
 }
 
-func insertAlbums(t *testing.T, db *sql.DB, albs ...Album) {
+func insertAlbums(t *testing.T, db *sql.DB, albs ...catalog.Album) {
 	t.Helper()
 
 	query := "INSERT INTO album (id, title, artist, price, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)"
